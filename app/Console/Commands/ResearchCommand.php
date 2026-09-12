@@ -11,6 +11,7 @@ use App\Ai\StepUsageRecorder;
 use App\Ai\TokenBudget;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Laravel\Ai\Events\InvokingTool;
 use Laravel\Ai\Events\ToolInvoked;
 
@@ -30,7 +31,7 @@ class ResearchCommand extends Command
 
     protected $description = 'Research a blog topic: mine the web + check our own posts for gaps';
 
-    public function handle(): int
+    public function handle(StepUsageRecorder $recorder, TokenBudget $budget): int
     {
         $topic = (string) $this->argument('topic');
 
@@ -47,7 +48,6 @@ class ResearchCommand extends Command
         $caching = (string) $this->option('caching');
         $agent = $caching === 'prefix' ? new PrefixCachedResearchAgent : new ResearchAgent(caching: $caching);
 
-        $budget = resolve(TokenBudget::class);
         $budget->ceiling = $this->option('budget') !== null ? (int) $this->option('budget') : null;
         $budget->prefixTokens = (int) $this->option('prefix-tokens');
 
@@ -66,7 +66,7 @@ class ResearchCommand extends Command
         } catch (TokenBudgetExceeded $e) {
             $this->newLine();
             $this->error($e->getMessage());
-            $this->stepTable($recorder = resolve(StepUsageRecorder::class));
+            $this->stepTable($recorder);
             $this->comment('Run saved: '.$recorder->save("{$provider}-{$model}-budget-{$budget->ceiling}-refused"));
 
             return self::FAILURE;
@@ -82,7 +82,7 @@ class ResearchCommand extends Command
             $response->usage->completionTokens ?? 0,
         ));
 
-        $this->stepTable($recorder = resolve(StepUsageRecorder::class));
+        $this->stepTable($recorder);
 
         $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}");
         $this->comment("Run saved: {$path}");
@@ -132,8 +132,6 @@ class ResearchCommand extends Command
 
     private function short(string $value, int $max): string
     {
-        $value = preg_replace('/\s+/', ' ', trim($value)) ?? '';
-
-        return mb_strlen($value) > $max ? mb_substr($value, 0, $max).'…' : $value;
+        return Str::limit(Str::squish($value), $max, '…');
     }
 }

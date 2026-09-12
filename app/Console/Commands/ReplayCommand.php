@@ -96,7 +96,7 @@ class ReplayCommand extends Command
             'turns' => $rows,
             'totals' => $totals,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $this->comment("Replay saved: ".Storage::path($path));
+        $this->comment('Replay saved: '.Storage::path($path));
 
         return self::SUCCESS;
     }

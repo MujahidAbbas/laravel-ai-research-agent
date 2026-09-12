@@ -7,8 +7,9 @@ namespace App\Ai\Agents;
 use App\Ai\History\HistoryPolicy;
 use App\Ai\History\KeepEverything;
 use Laravel\Ai\Concerns\RemembersConversations;
-use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Contracts\Conversational;
+use Laravel\Ai\Contracts\ConversationStore;
+use Laravel\Ai\Messages\Message;
 
 /**
  * The research agent, remembered across turns.
@@ -31,7 +32,7 @@ class ConversationalResearchAgent extends ResearchAgent implements Conversationa
     }
 
     /**
-     * @return \Laravel\Ai\Messages\Message[]
+     * @return Message[]
      */
     public function messages(): iterable
     {

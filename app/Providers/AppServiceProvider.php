@@ -16,7 +16,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Singletons, so every StartingStep/StepCompleted event of a run lands
+        // on the same instance and the per-invocation rows accumulate.
+        $this->app->singleton(StepUsageRecorder::class);
+        $this->app->singleton(TokenBudget::class);
     }
 
     /**
@@ -24,9 +27,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->app->singleton(StepUsageRecorder::class);
-        $this->app->singleton(TokenBudget::class);
-
         Event::listen(StartingStep::class, [StepUsageRecorder::class, 'starting']);
         Event::listen(StepCompleted::class, [StepUsageRecorder::class, 'completed']);
 

@@ -16,6 +16,7 @@ use Illuminate\Console\Command;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Ai\Events\InvokingTool;
 use Laravel\Ai\Responses\AgentResponse;
 use Throwable;
@@ -118,7 +119,7 @@ class ConversationCommand extends Command
     }
 
     /**
-     * A provider 5xx mid-conversation should not throw away nine good turns.
+     * A provider 5xx or 429 mid-conversation should not throw away nine good turns.
      * Same prompt, same agent instance, up to two retries; anything else
      * (4xx, budget, bugs) propagates.
      */
@@ -128,7 +129,9 @@ class ConversationCommand extends Command
             try {
                 return $agent->prompt($prompt, provider: $provider, model: $model, timeout: 180);
             } catch (RequestException $e) {
-                if ($attempt >= 3 || $e->response->status() < 500) {
+                $transient = $e->response->serverError() || $e->response->status() === 429;
+
+                if ($attempt >= 3 || ! $transient) {
                     throw $e;
                 }
 
@@ -251,8 +254,6 @@ class ConversationCommand extends Command
 
     private function short(string $value, int $max): string
     {
-        $value = preg_replace('/\s+/', ' ', trim($value)) ?? '';
-
-        return mb_strlen($value) > $max ? mb_substr($value, 0, $max).'…' : $value;
+        return Str::limit(Str::squish($value), $max, '…');
     }
 }
