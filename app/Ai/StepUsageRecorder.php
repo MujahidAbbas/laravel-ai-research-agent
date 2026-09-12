@@ -29,11 +29,20 @@ class StepUsageRecorder
         // to show the shape and is what a pre-run estimate has to work with.
         $encoded = json_encode($event->messages) ?: serialize($event->messages);
 
+        // Chars per message class, so a run file shows how much of the
+        // context is rehydrated tool results versus the conversation itself.
+        $byClass = [];
+        foreach ($event->messages as $message) {
+            $key = class_basename($message);
+            $byClass[$key] = ($byClass[$key] ?? 0) + strlen(json_encode($message) ?: '');
+        }
+
         $this->rows[$event->invocationId][$event->stepNumber] = [
             'step' => $event->stepNumber + 1,
             'messages_sent' => count($event->messages),
             'context_chars' => strlen($encoded),
             'context_est_tokens' => intdiv(strlen($encoded), 4),
+            'context_chars_by_class' => $byClass,
         ];
     }
 
