@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Ai\Agents\ResearchAgent;
 use App\Ai\StepUsageRecorder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
-use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Events\InvokingTool;
 use Laravel\Ai\Events\ToolInvoked;
-use Shipfastlabs\Toolkit\Database\DatabaseQueryTool;
-use Shipfastlabs\Toolkit\Firecrawl\FirecrawlScrape;
-use Shipfastlabs\Toolkit\Firecrawl\FirecrawlSearch;
 
 /**
  * A content-research agent. Given a topic, it mines the web for what the
@@ -23,7 +20,8 @@ class ResearchCommand extends Command
 {
     protected $signature = 'research {topic : The blog topic to research}
         {--provider=anthropic : Provider to run on (anthropic, openai)}
-        {--model=claude-sonnet-4-6 : Model id for that provider}';
+        {--model=claude-sonnet-4-6 : Model id for that provider}
+        {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint)}';
 
     protected $description = 'Research a blog topic: mine the web + check our own posts for gaps';
 
@@ -41,35 +39,7 @@ class ResearchCommand extends Command
             $this->line('    ↳ '.$this->short((string) $e->result, 160));
         });
 
-        $agent = new AnonymousAgent(
-            instructions: <<<'TXT'
-                You are a content-research assistant for a Laravel + AI engineering blog.
-
-                Your job: given a topic, decide whether it is worth writing and find a
-                non-obvious angle, using your tools.
-
-                Workflow:
-                1. Use the web search tool to find what developers are actually saying
-                   about the topic (Reddit, forums, blogs).
-                2. Scrape the single most relevant result for concrete detail.
-                3. Query our own published posts to see what we have ALREADY covered, so
-                   you do not propose a duplicate. The database has a read-only `posts`
-                   table with columns: id, title, slug, description, tags
-                   (comma-separated), published_at. It accepts a single SELECT only.
-                4. Recommend 2-3 specific angles we have NOT published yet, and for each,
-                   name the gap it fills versus both the community discussion and our
-                   existing posts.
-
-                Be concrete and concise. Prefer angles backed by a real pain point you
-                found in the search.
-                TXT,
-            messages: [],
-            tools: [
-                new FirecrawlSearch,
-                new FirecrawlScrape,
-                new DatabaseQueryTool,
-            ],
-        );
+        $agent = new ResearchAgent(caching: (string) $this->option('caching'));
 
         $this->info("Researching: {$topic}");
 
@@ -95,7 +65,7 @@ class ResearchCommand extends Command
 
         $this->stepTable($recorder = resolve(StepUsageRecorder::class));
 
-        $path = $recorder->save("{$provider}-{$model}");
+        $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}");
         $this->comment("Run saved: {$path}");
 
         return self::SUCCESS;
