@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Ai\StepUsageRecorder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\AnonymousAgent;
@@ -20,7 +21,9 @@ use Shipfastlabs\Toolkit\Firecrawl\FirecrawlSearch;
  */
 class ResearchCommand extends Command
 {
-    protected $signature = 'research {topic : The blog topic to research}';
+    protected $signature = 'research {topic : The blog topic to research}
+        {--provider=anthropic : Provider to run on (anthropic, openai)}
+        {--model=claude-sonnet-4-6 : Model id for that provider}';
 
     protected $description = 'Research a blog topic: mine the web + check our own posts for gaps';
 
@@ -70,10 +73,13 @@ class ResearchCommand extends Command
 
         $this->info("Researching: {$topic}");
 
+        $provider = (string) $this->option('provider');
+        $model = (string) $this->option('model');
+
         $response = $agent->prompt(
             "Research this blog topic and recommend angles we haven't covered: {$topic}",
-            provider: 'anthropic',
-            model: 'claude-sonnet-4-6',
+            provider: $provider,
+            model: $model,
             timeout: 180,
         );
 
@@ -87,7 +93,52 @@ class ResearchCommand extends Command
             $response->usage->completionTokens ?? 0,
         ));
 
+        $this->stepTable($recorder = resolve(StepUsageRecorder::class));
+
+        $path = $recorder->save("{$provider}-{$model}");
+        $this->comment("Run saved: {$path}");
+
         return self::SUCCESS;
+    }
+
+    /**
+     * The number the SDK reports is a sum over every step. This is the shape.
+     */
+    private function stepTable(StepUsageRecorder $recorder): void
+    {
+        $rows = $recorder->rows();
+
+        if ($rows === []) {
+            $this->warn('No step events recorded.');
+
+            return;
+        }
+
+        $this->newLine();
+        $this->table(
+            ['Step', 'Tools', 'Context (sent)', 'Prompt', 'Cache write', 'Cache read', 'Out', 'ms'],
+            array_map(fn (array $r) => [
+                $r['step'],
+                implode(', ', $r['tools'] ?? []) ?: '—',
+                number_format($r['context_tokens'] ?? 0),
+                number_format($r['prompt_tokens'] ?? 0),
+                number_format($r['cache_write_tokens'] ?? 0),
+                number_format($r['cache_read_tokens'] ?? 0),
+                number_format($r['completion_tokens'] ?? 0),
+                number_format($r['ms'] ?? 0),
+            ], $rows),
+        );
+
+        $t = $recorder->totals();
+        $this->comment(sprintf(
+            'Context sent across %d steps: %s tokens (%s uncached + %s cache write + %s cache read); output %s',
+            $t['steps'],
+            number_format($t['context_tokens']),
+            number_format($t['prompt_tokens']),
+            number_format($t['cache_write_tokens']),
+            number_format($t['cache_read_tokens']),
+            number_format($t['completion_tokens']),
+        ));
     }
 
     private function short(string $value, int $max): string
