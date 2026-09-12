@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Ai\Agents\PrefixCachedResearchAgent;
 use App\Ai\Agents\ResearchAgent;
+use App\Ai\Exceptions\TokenBudgetExceeded;
 use App\Ai\StepUsageRecorder;
+use App\Ai\TokenBudget;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Events\InvokingTool;
@@ -21,7 +24,9 @@ class ResearchCommand extends Command
     protected $signature = 'research {topic : The blog topic to research}
         {--provider=anthropic : Provider to run on (anthropic, openai)}
         {--model=claude-sonnet-4-6 : Model id for that provider}
-        {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint)}';
+        {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint) | prefix (Anthropic instructions + tools only)}
+        {--budget= : Ceiling on context tokens the whole run may send; refuses the step that would cross it}
+        {--prefix-tokens=1345 : Tokens the instructions + tool schemas cost on this provider (measured: 1,345 Sonnet 4.6, ~620 gpt-5.6-terra)}';
 
     protected $description = 'Research a blog topic: mine the web + check our own posts for gaps';
 
@@ -39,19 +44,33 @@ class ResearchCommand extends Command
             $this->line('    ↳ '.$this->short((string) $e->result, 160));
         });
 
-        $agent = new ResearchAgent(caching: (string) $this->option('caching'));
+        $caching = (string) $this->option('caching');
+        $agent = $caching === 'prefix' ? new PrefixCachedResearchAgent : new ResearchAgent(caching: $caching);
+
+        $budget = resolve(TokenBudget::class);
+        $budget->ceiling = $this->option('budget') !== null ? (int) $this->option('budget') : null;
+        $budget->prefixTokens = (int) $this->option('prefix-tokens');
 
         $this->info("Researching: {$topic}");
 
         $provider = (string) $this->option('provider');
         $model = (string) $this->option('model');
 
-        $response = $agent->prompt(
-            "Research this blog topic and recommend angles we haven't covered: {$topic}",
-            provider: $provider,
-            model: $model,
-            timeout: 180,
-        );
+        try {
+            $response = $agent->prompt(
+                "Research this blog topic and recommend angles we haven't covered: {$topic}",
+                provider: $provider,
+                model: $model,
+                timeout: 180,
+            );
+        } catch (TokenBudgetExceeded $e) {
+            $this->newLine();
+            $this->error($e->getMessage());
+            $this->stepTable($recorder = resolve(StepUsageRecorder::class));
+            $this->comment('Run saved: '.$recorder->save("{$provider}-{$model}-budget-{$budget->ceiling}-refused"));
+
+            return self::FAILURE;
+        }
 
         $this->newLine();
         $this->line(str_repeat('─', 70));
