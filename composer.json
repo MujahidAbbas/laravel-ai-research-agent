@@ -3,14 +3,17 @@
     "name": "laravel/laravel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "laravel/ai": "^0.7",
+        "laravel/ai": "^0.11",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
-        "shipfastlabs/toolkit-database": "^1.0",
+        "shipfastlabs/toolkit-database": "*",
         "shipfastlabs/toolkit-firecrawl": "*"
     },
     "require-dev": {
@@ -86,12 +89,22 @@
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
-    "repositories": [{
-        "name": "firecrawl",
-        "type": "path",
-        "url": "packages/toolkit-firecrawl",
-        "options": {
-            "symlink": false
+    "repositories": [
+        {
+            "name": "firecrawl",
+            "type": "path",
+            "url": "packages/toolkit-firecrawl",
+            "options": {
+                "symlink": false
+            }
+        },
+        {
+            "name": "database",
+            "type": "path",
+            "url": "packages/toolkit-database",
+            "options": {
+                "symlink": false
+            }
         }
-    }]
+    ]
 }
