@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Ai\Durable\StepCheckpoint;
+use App\Ai\QueueRunLog;
 use App\Ai\StepUsageRecorder;
 use App\Ai\TokenBudget;
 use Illuminate\Support\Facades\Event;
@@ -20,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
         // on the same instance and the per-invocation rows accumulate.
         $this->app->singleton(StepUsageRecorder::class);
         $this->app->singleton(TokenBudget::class);
+        $this->app->singleton(QueueRunLog::class);
     }
 
     /**
@@ -33,5 +36,11 @@ class AppServiceProvider extends ServiceProvider
         // The budget guard runs after the recorder so a refused run still has its rows.
         Event::listen(StartingStep::class, [TokenBudget::class, 'starting']);
         Event::listen(StepCompleted::class, [TokenBudget::class, 'completed']);
+
+        // Everything a killed worker leaves behind: one JSONL line per queue and agent event.
+        Event::listen(QueueRunLog::EVENTS, [QueueRunLog::class, 'record']);
+
+        // Durable runs: checkpoint the history before every step, and stop cleanly between steps on a signal.
+        Event::listen(StartingStep::class, [StepCheckpoint::class, 'starting']);
     }
 }
