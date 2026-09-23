@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Ai\Agents\JudgedResearchAgent;
 use App\Ai\Agents\PrefixCachedResearchAgent;
 use App\Ai\Agents\ResearchAgent;
 use App\Ai\Exceptions\TokenBudgetExceeded;
 use App\Ai\StepUsageRecorder;
 use App\Ai\TokenBudget;
+use App\Ai\Tools\JudgedSearch;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -25,6 +27,7 @@ class ResearchCommand extends Command
     protected $signature = 'research {topic : The blog topic to research}
         {--provider=anthropic : Provider to run on (anthropic, openai)}
         {--model=claude-sonnet-4-6 : Model id for that provider}
+        {--judged : Replace search + scrape with JudgedSearch (Jev filters every page first)}
         {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint) | prefix (Anthropic instructions + tools only)}
         {--budget= : Ceiling on context tokens the whole run may send; refuses the step that would cross it}
         {--prefix-tokens=1345 : Tokens the instructions + tool schemas cost on this provider (measured: 1,345 Sonnet 4.6, ~620 gpt-5.6-terra)}';
@@ -46,7 +49,11 @@ class ResearchCommand extends Command
         });
 
         $caching = (string) $this->option('caching');
-        $agent = $caching === 'prefix' ? new PrefixCachedResearchAgent : new ResearchAgent(caching: $caching);
+        $agent = match (true) {
+            (bool) $this->option('judged') => new JudgedResearchAgent(new JudgedSearch(runKey: $runKey = (string) Str::ulid()), caching: $caching),
+            $caching === 'prefix' => new PrefixCachedResearchAgent,
+            default => new ResearchAgent(caching: $caching),
+        };
 
         $budget->ceiling = $this->option('budget') !== null ? (int) $this->option('budget') : null;
         $budget->prefixTokens = (int) $this->option('prefix-tokens');
@@ -84,7 +91,7 @@ class ResearchCommand extends Command
 
         $this->stepTable($recorder);
 
-        $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}");
+        $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}".(isset($runKey) ? "-judged-{$runKey}" : ''));
         $this->comment("Run saved: {$path}");
 
         return self::SUCCESS;
