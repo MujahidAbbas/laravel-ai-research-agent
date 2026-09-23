@@ -1,0 +1,135 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Tools;
+
+use App\Ai\PageJudge;
+use App\Models\SearchJudgement;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Tools\Request;
+use Shipfastlabs\Toolkit\Firecrawl\FirecrawlSearch;
+use Stringable;
+use Throwable;
+
+/**
+ * Wraps the toolkit's FirecrawlSearch (never edited) with a Jev gate.
+ * Every result is scraped, judged, and stored; the agent only sees what passes.
+ */
+class JudgedSearch implements Tool
+{
+    public function __construct(
+        public float $keepAt = 0.7,
+        public float $dropBelow = 0.3,
+        public float $injectionAt = 0.7,
+        public ?string $runKey = null,
+        public ?PageJudge $judge = null,
+        public ?FirecrawlSearch $search = null,
+    ) {
+        $this->judge ??= new PageJudge;
+        $this->search ??= new FirecrawlSearch;
+    }
+
+    public function description(): Stringable|string
+    {
+        return <<<'TXT'
+            Search the web. Every result is read and judged before you see it:
+            "pages" are relevant results with their full content, "unsure" results
+            come with title, URL and description only, and "dropped" is how many
+            results were judged not worth reading.
+            TXT;
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'query' => $schema->string()->description('The search query to look up on the web.')->required(),
+            'limit' => $schema->integer()->description('Maximum number of results to judge (1-10, default: 5).')->nullable()->required(),
+        ];
+    }
+
+    public function handle(Request $request): Stringable|string
+    {
+        $query = trim((string) $request->string('query'));
+
+        $raw = $this->search->handle(new Request([
+            'query' => $query,
+            'limit' => min(max((int) ($request['limit'] ?? 5), 1), 10),
+            'sources' => 'web',
+            'scrape_content' => true,
+        ]));
+
+        $results = json_decode($raw, true)['data']['web'] ?? null;
+
+        if (! is_array($results)) {
+            return $raw; // the toolkit's own error message, unchanged
+        }
+
+        $out = ['query' => $query, 'pages' => [], 'unsure' => [], 'dropped' => 0];
+
+        foreach ($results as $page) {
+            $verdict = $this->judgeAndStore($query, $page);
+
+            match ($verdict) {
+                'keep', 'unjudged' => $out['pages'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'content' => $page['markdown'] ?? ''],
+                'brief' => $out['unsure'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'description' => $page['description'] ?? null],
+                'drop' => $out['dropped']++,
+            };
+        }
+
+        return json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    private function judgeAndStore(string $query, array $page): string
+    {
+        $row = [
+            'run_key' => $this->runKey,
+            'query' => $query,
+            'url' => $page['url'],
+            'title' => $page['title'] ?? null,
+            'description' => $page['description'] ?? null,
+            'position' => $page['position'] ?? null,
+            'content_chars' => mb_strlen($page['markdown'] ?? ''),
+            'judged_chars' => mb_strlen($excerpt = PageJudge::excerpt($page)),
+            'excerpt' => $excerpt,
+        ];
+
+        $started = hrtime(true);
+
+        try {
+            $response = $this->judge->judge($query, $page);
+        } catch (Throwable $e) {
+            // Fail open: a classifier outage must not starve the agent of sources.
+            Log::warning('Could not judge a search result.', ['url' => $page['url'], 'error' => $e->getMessage()]);
+
+            SearchJudgement::create([...$row, 'verdict' => 'unjudged', 'error' => $e->getMessage()]);
+
+            return 'unjudged';
+        }
+
+        $relevant = $response['relevant']->probability;
+        $injection = $response['injection']->probability;
+
+        $verdict = match (true) {
+            $injection >= $this->injectionAt => 'drop',
+            $relevant >= $this->keepAt => 'keep',
+            $relevant < $this->dropBelow => 'drop',
+            default => 'brief',
+        };
+
+        SearchJudgement::create([
+            ...$row,
+            'relevant' => $relevant,
+            'has_evidence' => $response['has_evidence']->probability,
+            'injection' => $injection,
+            'verdict' => $verdict,
+            'model' => $response->meta->model,
+            'input_tokens' => $response->usage->inputTokens,
+            'ms' => (int) ((hrtime(true) - $started) / 1_000_000),
+        ]);
+
+        return $verdict;
+    }
+}
