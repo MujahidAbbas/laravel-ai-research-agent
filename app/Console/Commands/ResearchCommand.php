@@ -50,7 +50,7 @@ class ResearchCommand extends Command
 
         $caching = (string) $this->option('caching');
         $agent = match (true) {
-            (bool) $this->option('judged') => new JudgedResearchAgent(new JudgedSearch(runKey: $runKey = (string) Str::ulid()), caching: $caching),
+            (bool) $this->option('judged') => new JudgedResearchAgent(new JudgedSearch(topic: $topic, runKey: $runKey = (string) Str::ulid()), caching: $caching),
             $caching === 'prefix' => new PrefixCachedResearchAgent,
             default => new ResearchAgent(caching: $caching),
         };

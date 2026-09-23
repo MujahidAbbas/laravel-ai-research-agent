@@ -13,6 +13,7 @@ return new class extends Migration
         Schema::create('search_judgements', function (Blueprint $table) {
             $table->id();
             $table->string('run_key', 26)->nullable()->index();
+            $table->string('topic');
             $table->string('query');
             $table->string('url', 2048);
             $table->string('title')->nullable();

@@ -29,7 +29,7 @@ class LabelJudgementsCommand extends Command
         foreach ($pending->lazyById() as $row) {
             $done++;
             $this->newLine();
-            $this->line("<fg=gray>[{$done}/{$total}]</> <options=bold>Topic:</> {$row->query}");
+            $this->line("<fg=gray>[{$done}/{$total}]</> <options=bold>Topic:</> {$row->topic}  <fg=gray>(searched: {$row->query})</>");
             $this->line("<options=bold>{$row->title}</>");
             $this->line("<fg=cyan>{$row->url}</>");
             $this->line('<fg=gray>'.Str::limit((string) $row->description, 300).'</>');

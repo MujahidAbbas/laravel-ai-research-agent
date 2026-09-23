@@ -26,10 +26,11 @@ class PageJudge
     /**
      * @param  array{url: string, title?: ?string, markdown?: ?string}  $page
      */
-    public function judge(string $query, array $page): ClassificationResponse
+    public function judge(string $topic, string $query, array $page): ClassificationResponse
     {
         return Classification::of([
-            'research_topic' => $query,
+            'research_topic' => $topic,
+            'search_query' => $query,
             'title' => $page['title'] ?? '',
             'url' => $page['url'],
             'page' => self::excerpt($page),

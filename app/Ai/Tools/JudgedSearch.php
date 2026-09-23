@@ -24,6 +24,7 @@ class JudgedSearch implements Tool
         public float $keepAt = 0.7,
         public float $dropBelow = 0.3,
         public float $injectionAt = 0.7,
+        public string $topic = '',
         public ?string $runKey = null,
         public ?PageJudge $judge = null,
         public ?FirecrawlSearch $search = null,
@@ -32,13 +33,17 @@ class JudgedSearch implements Tool
         $this->search ??= new FirecrawlSearch;
     }
 
+    /** @var array<string, true> URLs already handed to the agent in this run. */
+    private array $sent = [];
+
     public function description(): Stringable|string
     {
         return <<<'TXT'
             Search the web. Every result is read and judged before you see it:
             "pages" are relevant results with their full content, "unsure" results
             come with title, URL and description only, and "dropped" is how many
-            results were judged not worth reading.
+            results were judged not worth reading. "already_sent" lists URLs you
+            received from an earlier search in this run.
             TXT;
     }
 
@@ -67,9 +72,17 @@ class JudgedSearch implements Tool
             return $raw; // the toolkit's own error message, unchanged
         }
 
-        $out = ['query' => $query, 'pages' => [], 'unsure' => [], 'dropped' => 0];
+        $out = ['query' => $query, 'pages' => [], 'unsure' => [], 'dropped' => 0, 'already_sent' => []];
 
         foreach ($results as $page) {
+            if (isset($this->sent[$page['url']])) {
+                $out['already_sent'][] = $page['url'];
+
+                continue;
+            }
+
+            $this->sent[$page['url']] = true;
+
             $verdict = $this->judgeAndStore($query, $page);
 
             match ($verdict) {
@@ -86,6 +99,7 @@ class JudgedSearch implements Tool
     {
         $row = [
             'run_key' => $this->runKey,
+            'topic' => $this->topic ?: $query,
             'query' => $query,
             'url' => $page['url'],
             'title' => $page['title'] ?? null,
@@ -96,10 +110,17 @@ class JudgedSearch implements Tool
             'excerpt' => $excerpt,
         ];
 
+        if (trim($row['excerpt']) === '') {
+            // Nothing to read. Jev would judge the title alone, and confidently.
+            SearchJudgement::create([...$row, 'verdict' => 'brief', 'error' => 'empty page']);
+
+            return 'brief';
+        }
+
         $started = hrtime(true);
 
         try {
-            $response = $this->judge->judge($query, $page);
+            $response = $this->judge->judge($this->topic ?: $query, $query, $page);
         } catch (Throwable $e) {
             // Fail open: a classifier outage must not starve the agent of sources.
             Log::warning('Could not judge a search result.', ['url' => $page['url'], 'error' => $e->getMessage()]);

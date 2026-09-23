@@ -90,7 +90,8 @@ class JudgedSearchTest extends TestCase
 
         Classification::assertClassified(
             fn (ClassificationPrompt $prompt) => mb_strlen($prompt->state['page']) <= PageJudge::MAX_CHARS + 3
-                && $prompt->state['research_topic'] === 'laravel queue timeouts'
+                && $prompt->state['research_topic'] === 'Horizon memory leaks'
+                && $prompt->state['search_query'] === 'laravel queue timeouts'
         );
         $this->assertSame(50_000, SearchJudgement::sole()->content_chars);
     }
@@ -104,6 +105,34 @@ class JudgedSearchTest extends TestCase
         $this->search();
 
         Classification::assertNothingClassified();
+    }
+
+    public function test_an_empty_page_is_not_sent_to_jev(): void
+    {
+        $this->fakeSearch(['https://a.test'], markdown: '');
+
+        Classification::fake();
+
+        $out = $this->search();
+
+        Classification::assertNothingClassified();
+        $this->assertSame(['https://a.test'], array_column($out['unsure'], 'url'));
+    }
+
+    public function test_a_page_already_sent_in_this_run_is_not_judged_or_sent_again(): void
+    {
+        $this->fakeSearch(['https://a.test']);
+
+        Classification::fake(fn () => $this->answers(relevant: 0.9));
+
+        $tool = new JudgedSearch(topic: 'Horizon memory leaks');
+        $first = $this->search($tool);
+        $second = $this->search($tool);
+
+        $this->assertCount(1, $first['pages']);
+        $this->assertSame([], $second['pages']);
+        $this->assertSame(['https://a.test'], $second['already_sent']);
+        $this->assertSame(1, SearchJudgement::count());
     }
 
     public function test_the_fake_answers_cover_every_question_the_judge_asks(): void
@@ -135,8 +164,10 @@ class JudgedSearchTest extends TestCase
         ])]);
     }
 
-    private function search(): array
+    private function search(?JudgedSearch $tool = null): array
     {
-        return json_decode((string) (new JudgedSearch)->handle(new Request(['query' => 'laravel queue timeouts'])), true);
+        $tool ??= new JudgedSearch(topic: 'Horizon memory leaks');
+
+        return json_decode((string) $tool->handle(new Request(['query' => 'laravel queue timeouts'])), true);
     }
 }
