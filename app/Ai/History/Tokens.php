@@ -9,7 +9,7 @@ use Laravel\Ai\Messages\Message;
 /**
  * chars/4, the same estimate StepUsageRecorder uses. The SDK ships no token
  * counter, and for a budget decision an estimate that is 10-20% off is fine
- * as long as the run file shows how far off it was against promptTokens.
+ * as long as the run file shows how far off it was against inputTokens.
  */
 final class Tokens
 {

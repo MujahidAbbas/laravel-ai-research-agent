@@ -57,7 +57,7 @@ class TokenBudget
         $usage = $event->response->usage;
 
         $this->spent[$event->invocationId] = ($this->spent[$event->invocationId] ?? 0)
-            + $usage->promptTokens + $usage->cacheWriteInputTokens + $usage->cacheReadInputTokens;
+            + $usage->inputTokens;
 
         if ($this->ceiling !== null && $this->spent[$event->invocationId] > $this->ceiling) {
             throw TokenBudgetExceeded::afterStep($event->stepNumber + 1, $this->spent[$event->invocationId], $this->ceiling);

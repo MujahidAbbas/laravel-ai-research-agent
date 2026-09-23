@@ -78,8 +78,8 @@ class ResearchCommand extends Command
         $this->line(str_repeat('─', 70));
         $this->comment(sprintf(
             'Tokens: %d in / %d out',
-            $response->usage->promptTokens ?? 0,
-            $response->usage->completionTokens ?? 0,
+            $response->usage->inputTokens ?? 0,
+            $response->usage->outputTokens ?? 0,
         ));
 
         $this->stepTable($recorder);
