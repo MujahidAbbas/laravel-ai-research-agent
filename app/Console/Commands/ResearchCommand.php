@@ -27,6 +27,7 @@ class ResearchCommand extends Command
     protected $signature = 'research {topic : The blog topic to research}
         {--provider=anthropic : Provider to run on (anthropic, openai)}
         {--model=claude-sonnet-4-6 : Model id for that provider}
+        {--max-steps= : Step cap for this run (default: the agent's own)}
         {--judged : Replace search + scrape with JudgedSearch (Jev filters every page first)}
         {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint) | prefix (Anthropic instructions + tools only)}
         {--budget= : Ceiling on context tokens the whole run may send; refuses the step that would cross it}
@@ -54,6 +55,8 @@ class ResearchCommand extends Command
             $caching === 'prefix' => new PrefixCachedResearchAgent,
             default => new ResearchAgent(caching: $caching),
         };
+
+        $agent->stepCap = $this->option('max-steps') !== null ? (int) $this->option('max-steps') : null;
 
         $budget->ceiling = $this->option('budget') !== null ? (int) $this->option('budget') : null;
         $budget->prefixTokens = (int) $this->option('prefix-tokens');

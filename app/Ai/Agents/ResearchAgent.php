@@ -28,6 +28,18 @@ class ResearchAgent implements Agent, HasProviderOptions, HasTools
      */
     public function __construct(public string $caching = 'default') {}
 
+    /** Set per run to give every arm of a comparison the same step budget. */
+    public ?int $stepCap = null;
+
+    /**
+     * The SDK reads this before any #[MaxSteps] attribute; null falls through to it,
+     * and without either the cap is derived from the tool count.
+     */
+    public function maxSteps(): ?int
+    {
+        return $this->stepCap;
+    }
+
     public function instructions(): string
     {
         return <<<'TXT'
