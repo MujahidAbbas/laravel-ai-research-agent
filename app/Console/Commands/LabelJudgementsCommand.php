@@ -42,7 +42,7 @@ class LabelJudgementsCommand extends Command
                 'm' => 'Show more of the page',
                 's' => 'Skip for now',
                 'q' => 'Quit',
-            ])) === 'm') {
+            ], default: 's')) === 'm') {
                 $this->line(mb_substr($row->excerpt, $shown, 3_000));
                 $shown += 3_000;
             }
