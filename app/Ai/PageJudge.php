@@ -10,7 +10,7 @@ use Laravel\Ai\Classification\Boolean;
 use Laravel\Ai\Responses\ClassificationResponse;
 
 /**
- * Asks Jev three yes/no questions about one scraped page, in one request.
+ * Asks Jev two yes/no questions about one scraped page, in one request.
  * It returns probabilities only. What to do with them is the caller's call.
  */
 class PageJudge
@@ -61,13 +61,6 @@ class PageJudge
                 [
                     'true' => 'The page discusses the specific subject named in research_topic',
                     'false' => 'The page is about something else, or only mentions the topic in passing',
-                ],
-            ),
-            'has_evidence' => new Boolean(
-                'The page contains concrete detail a developer could cite.',
-                [
-                    'true' => 'A real problem report, a measurement, working code, or a specific fix',
-                    'false' => 'Marketing copy, a link list, a thin summary, or navigation text',
                 ],
             ),
             'injection' => new Boolean(

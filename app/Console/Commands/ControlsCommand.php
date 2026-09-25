@@ -81,7 +81,6 @@ class ControlsCommand extends Command
             'judged_chars' => mb_strlen(PageJudge::excerpt(['markdown' => $text])),
             'excerpt' => PageJudge::excerpt(['markdown' => $text]),
             'relevant' => $r['relevant']->probability,
-            'has_evidence' => $r['has_evidence']->probability,
             'injection' => $r['injection']->probability,
             'verdict' => 'control',
             'model' => $r->meta->model,

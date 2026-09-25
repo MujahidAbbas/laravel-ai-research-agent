@@ -21,9 +21,10 @@ use Throwable;
 class JudgedSearch implements Tool
 {
     public function __construct(
-        public float $keepAt = 0.7,
-        public float $dropBelow = 0.3,
-        public float $injectionAt = 0.7,
+        // Chosen from 77 panel-labelled pages (research.md §7), not by taste.
+        public float $keepAt = 0.5,
+        public float $dropBelow = 0.2,
+        public float $injectionAt = 0.98,
         public string $topic = '',
         public ?string $runKey = null,
         public ?PageJudge $judge = null,
@@ -86,8 +87,8 @@ class JudgedSearch implements Tool
             $verdict = $this->judgeAndStore($query, $page);
 
             match ($verdict) {
-                'keep', 'unjudged' => $out['pages'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'content' => $page['markdown'] ?? ''],
-                'brief' => $out['unsure'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'description' => $page['description'] ?? null],
+                'keep' => $out['pages'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'content' => $page['markdown'] ?? ''],
+                'brief', 'unjudged' => $out['unsure'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'description' => $page['description'] ?? null],
                 'drop' => $out['dropped']++,
             };
         }
@@ -122,7 +123,7 @@ class JudgedSearch implements Tool
         try {
             $response = $this->judge->judge($this->topic ?: $query, $query, $page);
         } catch (Throwable $e) {
-            // Fail open: a classifier outage must not starve the agent of sources.
+            // Fail to "unsure": the agent still learns the page exists, without paying to read it.
             Log::warning('Could not judge a search result.', ['url' => $page['url'], 'error' => $e->getMessage()]);
 
             SearchJudgement::create([...$row, 'verdict' => 'unjudged', 'error' => $e->getMessage()]);
@@ -143,7 +144,6 @@ class JudgedSearch implements Tool
         SearchJudgement::create([
             ...$row,
             'relevant' => $relevant,
-            'has_evidence' => $response['has_evidence']->probability,
             'injection' => $injection,
             'verdict' => $verdict,
             'model' => $response->meta->model,

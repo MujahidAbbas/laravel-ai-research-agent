@@ -31,7 +31,7 @@ class JudgedSearchTest extends TestCase
 
         Classification::fake(fn (ClassificationPrompt $prompt) => match ($prompt->state['url']) {
             'https://a.test' => $this->answers(relevant: 0.92),
-            'https://b.test' => $this->answers(relevant: 0.5),
+            'https://b.test' => $this->answers(relevant: 0.35),
             'https://c.test' => $this->answers(relevant: 0.1),
         });
 
@@ -47,7 +47,7 @@ class JudgedSearchTest extends TestCase
     {
         $this->fakeSearch(['https://a.test']);
 
-        Classification::fake(fn () => $this->answers(relevant: 0.99, injection: 0.85));
+        Classification::fake(fn () => $this->answers(relevant: 0.99, injection: 0.99));
 
         $out = $this->search();
 
@@ -55,7 +55,7 @@ class JudgedSearchTest extends TestCase
         $this->assertSame(1, $out['dropped']);
     }
 
-    public function test_it_fails_open_when_jev_errors(): void
+    public function test_a_page_jev_could_not_judge_arrives_as_title_and_url_only(): void
     {
         $this->fakeSearch(['https://a.test']);
 
@@ -63,7 +63,8 @@ class JudgedSearchTest extends TestCase
 
         $out = $this->search();
 
-        $this->assertSame(['https://a.test'], array_column($out['pages'], 'url'));
+        $this->assertSame([], $out['pages']);
+        $this->assertSame(['https://a.test'], array_column($out['unsure'], 'url'));
         $this->assertDatabaseHas('search_judgements', ['url' => 'https://a.test', 'verdict' => 'unjudged', 'error' => 'upstream 503']);
     }
 
@@ -71,12 +72,12 @@ class JudgedSearchTest extends TestCase
     {
         $this->fakeSearch(['https://a.test']);
 
-        Classification::fake(fn () => $this->answers(relevant: 0.81, evidence: 0.4, injection: 0.02));
+        Classification::fake(fn () => $this->answers(relevant: 0.81, injection: 0.02));
 
         $this->search();
 
         $row = SearchJudgement::sole();
-        $this->assertSame([0.81, 0.4, 0.02, 'keep'], [$row->relevant, $row->has_evidence, $row->injection, $row->verdict]);
+        $this->assertSame([0.81, 0.02, 'keep'], [$row->relevant, $row->injection, $row->verdict]);
         $this->assertNotNull($row->model);
     }
 
@@ -145,11 +146,10 @@ class JudgedSearchTest extends TestCase
     /**
      * @return array<string, BooleanAnswer>
      */
-    private function answers(float $relevant, float $evidence = 0.5, float $injection = 0.0): array
+    private function answers(float $relevant, float $injection = 0.0): array
     {
         return [
             'relevant' => new BooleanAnswer($relevant),
-            'has_evidence' => new BooleanAnswer($evidence),
             'injection' => new BooleanAnswer($injection),
         ];
     }
