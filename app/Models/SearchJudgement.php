@@ -17,6 +17,7 @@ class SearchJudgement extends Model
             'has_evidence' => 'float',
             'injection' => 'float',
             'label' => 'boolean',
+            'panel' => 'array',
         ];
     }
 }
