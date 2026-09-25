@@ -22,7 +22,7 @@ class SweepThresholdCommand extends Command
 
     public function handle(): int
     {
-        $rows = SearchJudgement::query()->whereNotNull('label')->whereNotNull('relevant')->get();
+        $rows = SearchJudgement::query()->where('kind', 'collected')->whereNotNull('label')->whereNotNull('relevant')->get();
 
         if ($rows->isEmpty()) {
             $this->error('No labelled judgements yet. Run ai:label-judgements first.');
@@ -66,6 +66,17 @@ class SweepThresholdCommand extends Command
         $path = 'runs/'.now()->format('Y-m-d-His')."-sweep-{$signal}.json";
         Storage::put($path, json_encode(['signal' => $signal, 'labelled' => $rows->count(), 'useful' => $useful, 'sweep' => $sweep, 'calibration' => $bins], JSON_PRETTY_PRINT));
         $this->comment('Saved: '.Storage::path($path));
+
+        // Pages the labellers split on: where does Jev put them?
+        $ambiguous = SearchJudgement::query()->where('kind', 'collected')->whereNotNull('panel')->whereNull('label')->get();
+
+        if ($ambiguous->isNotEmpty()) {
+            $this->newLine();
+            $this->info(sprintf(
+                '%d ambiguous pages (labellers disagreed): %s mean %.2f, range %.2f–%.2f',
+                $ambiguous->count(), $signal, $ambiguous->avg($score), $ambiguous->min($score), $ambiguous->max($score),
+            ));
+        }
 
         return self::SUCCESS;
     }
