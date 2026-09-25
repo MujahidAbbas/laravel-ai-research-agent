@@ -87,7 +87,7 @@ class JudgedSearchTest extends TestCase
 
         Classification::fake(fn () => $this->answers(relevant: 0.9));
 
-        $this->search();
+        $out = $this->search();
 
         Classification::assertClassified(
             fn (ClassificationPrompt $prompt) => mb_strlen($prompt->state['page']) <= PageJudge::MAX_CHARS + 3
@@ -95,6 +95,7 @@ class JudgedSearchTest extends TestCase
                 && $prompt->state['search_query'] === 'laravel queue timeouts'
         );
         $this->assertSame(50_000, SearchJudgement::sole()->content_chars);
+        $this->assertLessThanOrEqual(PageJudge::MAX_CHARS + 3, mb_strlen($out['pages'][0]['content']));
     }
 
     public function test_no_results_means_no_classification(): void

@@ -41,7 +41,7 @@ class JudgedSearch implements Tool
     {
         return <<<'TXT'
             Search the web. Every result is read and judged before you see it:
-            "pages" are relevant results with their full content, "unsure" results
+            "pages" are relevant results with the opening of their content, "unsure" results
             come with title, URL and description only, and "dropped" is how many
             results were judged not worth reading. "already_sent" lists URLs you
             received from an earlier search in this run.
@@ -87,7 +87,7 @@ class JudgedSearch implements Tool
             $verdict = $this->judgeAndStore($query, $page);
 
             match ($verdict) {
-                'keep' => $out['pages'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'content' => $page['markdown'] ?? ''],
+                'keep' => $out['pages'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'content' => PageJudge::excerpt($page)],
                 'brief', 'unjudged' => $out['unsure'][] = ['title' => $page['title'] ?? null, 'url' => $page['url'], 'description' => $page['description'] ?? null],
                 'drop' => $out['dropped']++,
             };

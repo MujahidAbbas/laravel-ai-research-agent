@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace App\Ai\Agents;
 
 use App\Ai\Tools\JudgedSearch;
+use Laravel\Ai\Attributes\MaxSteps;
 use Shipfastlabs\Toolkit\Database\DatabaseQueryTool;
 
 /**
  * The research agent with FirecrawlSearch + FirecrawlScrape replaced by
  * JudgedSearch. No scrape tool on purpose: an agent that can bypass the
  * filter will, and then the filter measures nothing.
+ *
+ * MaxSteps is pinned because the SDK derives the default from the tool count
+ * (round(tools * 1.5)): three tools gave the original agent 5 steps, two give 3.
  */
+#[MaxSteps(5)]
 class JudgedResearchAgent extends ResearchAgent
 {
     public function __construct(public JudgedSearch $search, string $caching = 'default')
