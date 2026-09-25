@@ -7,6 +7,7 @@ namespace App\Ai;
 use Illuminate\Support\Str;
 use Laravel\Ai\Classification;
 use Laravel\Ai\Classification\Boolean;
+use Laravel\Ai\Contracts\Question;
 use Laravel\Ai\Responses\ClassificationResponse;
 
 /**
@@ -51,7 +52,7 @@ class PageJudge
     /**
      * Every key the rest of the code reads. Tests fake all of them.
      *
-     * @return array<string, bool>
+     * @return array<string, Question>
      */
     public static function questions(): array
     {
