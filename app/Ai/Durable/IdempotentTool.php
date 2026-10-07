@@ -21,9 +21,10 @@ use Throwable;
  * the model mints new ids, so the id never matches across attempts.
  *
  * Not every argument belongs in the key. On resume the model re-plans the step
- * that was in flight and rewords free text (the crawl prompt), so a hash of
- * everything it typed misses the match. Pass the stable arguments; with none,
- * the key covers all of them.
+ * that was in flight, rewords free text and sometimes picks another target, so
+ * a hash of everything it typed misses the match. Pass the arguments that make
+ * two calls the same side effect: null means all of them, [] means none, so the
+ * run itself is the key (one call of this tool per run).
  *
  * Claim first, execute second. A crash between the two leaves a 'claimed' row:
  * the outcome is unknown. The retry re-runs it, unless the tool is at-most-once,
@@ -33,12 +34,12 @@ use Throwable;
 class IdempotentTool implements Tool
 {
     /**
-     * @param  list<string>  $keyArguments
+     * @param  list<string>|null  $keyArguments
      */
     public function __construct(
         private readonly Tool $tool,
         private readonly string $runKey,
-        private readonly array $keyArguments = [],
+        private readonly ?array $keyArguments = null,
         private readonly bool $atMostOnce = false,
     ) {}
 
@@ -62,7 +63,7 @@ class IdempotentTool implements Tool
         $args = $request->all();
         ksort($args);
 
-        $key = $this->keyArguments === [] ? $args : array_intersect_key($args, array_flip($this->keyArguments));
+        $key = $this->keyArguments === null ? $args : array_intersect_key($args, array_flip($this->keyArguments));
         $sha = sha1(json_encode($key, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         $claim = [

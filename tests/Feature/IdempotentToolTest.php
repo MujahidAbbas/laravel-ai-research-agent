@@ -42,15 +42,39 @@ class IdempotentToolTest extends TestCase
         $this->assertSame(1, DB::table('agent_tool_invocations')->where('tool', 'FirecrawlCrawl')->count());
     }
 
-    public function test_a_crawl_of_another_url_is_another_side_effect(): void
+    /**
+     * Run D2 (2026-10-07): attempt 2 re-planned the step and crawled another URL,
+     * so a URL key missed it too. The run asks for one crawl; the run is the key.
+     */
+    public function test_a_second_crawl_in_the_same_run_maps_to_the_first_whatever_its_url(): void
     {
         $crawl = $this->wrapped('FirecrawlCrawl');
 
-        $crawl->handle(new Request(['url' => 'https://pub.towardsai.net', 'limit' => 3, 'prompt' => 'Laravel queues']));
-        $crawl->handle(new Request(['url' => 'https://laravel-news.com', 'limit' => 3, 'prompt' => 'Laravel queues']));
+        $crawl->handle(new Request(['url' => 'https://medium.com/@Modexa/tool-calling-ai-in-prod-10-reliability-controls-ab1fffee9cdb', 'limit' => 3, 'prompt' => 'articles about LLM tool calling reliability, idempotency, duplicate prevention, production safeguards']));
+        $crawl->handle(new Request(['url' => 'https://dev.to/aws/how-to-prevent-ai-agent-reasoning-loops-from-wasting-tokens-2652', 'limit' => 3, 'prompt' => 'tool calling duplicate prevention idempotency retries']));
+
+        Http::assertSentCount(1);
+        $this->assertSame(1, DB::table('agent_tool_invocations')->where('tool', 'FirecrawlCrawl')->count());
+    }
+
+    public function test_another_run_gets_its_own_crawl(): void
+    {
+        $this->wrapped('FirecrawlCrawl')->handle(new Request(['url' => 'https://pub.towardsai.net', 'limit' => 3, 'prompt' => 'Laravel queues']));
+        $this->wrapped('FirecrawlCrawl', '01TESTRUNKEY0000000000000B')->handle(new Request(['url' => 'https://pub.towardsai.net', 'limit' => 3, 'prompt' => 'Laravel queues']));
 
         Http::assertSentCount(2);
-        $this->assertSame(2, DB::table('agent_tool_invocations')->where('tool', 'FirecrawlCrawl')->count());
+    }
+
+    public function test_a_scrape_keys_on_its_url_alone(): void
+    {
+        $scrape = $this->wrapped('FirecrawlScrape');
+
+        $scrape->handle(new Request(['url' => 'https://arxiv.org/html/2608.02645v1', 'formats' => 'markdown', 'only_main_content' => true]));
+        $scrape->handle(new Request(['url' => 'https://arxiv.org/html/2608.02645v1', 'formats' => 'markdown,links', 'only_main_content' => false]));
+        $scrape->handle(new Request(['url' => 'https://hafiqiqmal93.medium.com/post', 'formats' => 'markdown']));
+
+        Http::assertSentCount(2);
+        $this->assertSame(2, DB::table('agent_tool_invocations')->where('tool', 'FirecrawlScrape')->count());
     }
 
     public function test_a_tool_with_no_declared_key_still_hashes_every_argument(): void
@@ -65,14 +89,14 @@ class IdempotentToolTest extends TestCase
     }
 
     /**
-     * D1x's row 36: the kill landed during the crawl request, so attempt 1's
+     * D2's row 62: the kill landed during the crawl request, so attempt 1's
      * claim has no result and nobody knows whether Firecrawl started it.
      */
     public function test_an_interrupted_crawl_is_not_started_again(): void
     {
-        $this->claimedRow('FirecrawlCrawl', ['url' => 'https://pub.towardsai.net'], ['limit' => 3, 'prompt' => 'AI agents, Laravel, queue, LLM tool calling', 'url' => 'https://pub.towardsai.net']);
+        $this->claimedRow('FirecrawlCrawl', [], ['limit' => 3, 'prompt' => 'articles about LLM tool calling reliability, idempotency, duplicate prevention, production safeguards', 'url' => 'https://medium.com/@Modexa/tool-calling-ai-in-prod-10-reliability-controls-ab1fffee9cdb']);
 
-        $result = $this->wrapped('FirecrawlCrawl')->handle(new Request(['url' => 'https://pub.towardsai.net', 'limit' => 3, 'prompt' => 'Laravel queue jobs LLM agents AI']));
+        $result = $this->wrapped('FirecrawlCrawl')->handle(new Request(['url' => 'https://dev.to/aws/how-to-prevent-ai-agent-reasoning-loops-from-wasting-tokens-2652', 'limit' => 3, 'prompt' => 'tool calling duplicate prevention idempotency retries']));
 
         Http::assertNothingSent();
         $this->assertStringContainsString('may or may not have run', (string) $result);
@@ -107,9 +131,9 @@ class IdempotentToolTest extends TestCase
         ]);
     }
 
-    private function wrapped(string $name): IdempotentTool
+    private function wrapped(string $name, string $runKey = '01TESTRUNKEY0000000000000A'): IdempotentTool
     {
-        foreach ((new DurableResearchAgent('01TESTRUNKEY0000000000000A'))->tools() as $tool) {
+        foreach ((new DurableResearchAgent($runKey))->tools() as $tool) {
             if ($tool instanceof IdempotentTool && $tool->name() === $name) {
                 return $tool;
             }

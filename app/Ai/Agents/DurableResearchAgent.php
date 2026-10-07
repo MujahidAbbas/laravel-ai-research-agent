@@ -21,12 +21,14 @@ use Shipfastlabs\Toolkit\Firecrawl\FirecrawlScrape;
 class DurableResearchAgent extends QueuedResearchAgent
 {
     /**
-     * The arguments that make two calls the same side effect. A crawl of the
-     * same URL is the same crawl, whatever the model wrote in its prompt this
-     * time. A tool not listed here keys on all of its arguments.
+     * The arguments that make two calls the same side effect. The instructions
+     * ask for one crawl per run, so the run alone identifies it: on resume the
+     * model re-plans and may crawl another URL. A scrape of the same URL is the
+     * same read, whatever formats it asks for. A tool not listed here keys on
+     * all of its arguments.
      */
     private const KEY_ARGUMENTS = [
-        FirecrawlCrawl::class => ['url'],
+        FirecrawlCrawl::class => [],
         FirecrawlScrape::class => ['url'],
     ];
 
@@ -50,7 +52,7 @@ class DurableResearchAgent extends QueuedResearchAgent
                 ? new IdempotentTool(
                     $tool,
                     $this->runKey,
-                    keyArguments: self::KEY_ARGUMENTS[$tool::class] ?? [],
+                    keyArguments: self::KEY_ARGUMENTS[$tool::class] ?? null,
                     atMostOnce: in_array($tool::class, self::AT_MOST_ONCE, true),
                 )
                 : $tool;
