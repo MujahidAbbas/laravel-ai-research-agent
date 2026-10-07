@@ -13,7 +13,8 @@ class ResearchDurableCommand extends Command
 {
     protected $signature = 'ai:research-durable {topic : The blog topic to research}
         {--model=claude-haiku-4-5-20251001 : Anthropic model id}
-        {--run-key= : Re-dispatch an existing run (resumes from its checkpoint)}';
+        {--run-key= : Re-dispatch an existing run (resumes from its checkpoint)}
+        {--timeout= : Override the job timeout in seconds (for timeout demos)}';
 
     protected $description = 'Dispatch the research agent through the owned, interruptible job with a tool ledger and step checkpoints';
 
@@ -23,7 +24,13 @@ class ResearchDurableCommand extends Command
 
         QueueRunLog::note('dispatch', ['topic' => $this->argument('topic'), 'model' => $this->option('model'), 'mode' => 'durable', 'run_key' => $runKey]);
 
-        RunDurableResearch::dispatch($runKey, (string) $this->argument('topic'), (string) $this->option('model'));
+        $job = new RunDurableResearch($runKey, (string) $this->argument('topic'), (string) $this->option('model'));
+
+        if ($this->option('timeout') !== null) {
+            $job->timeout = (int) $this->option('timeout');
+        }
+
+        dispatch($job);
 
         $this->info("Queued RunDurableResearch with run key {$runKey}.");
 
