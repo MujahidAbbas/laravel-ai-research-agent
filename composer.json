@@ -10,10 +10,10 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "laravel/ai": "^0.11",
+        "laravel/ai": "^1.1",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
-        "shipfastlabs/toolkit-database": "*",
+        "shipfastlabs/toolkit-database": "^1.1",
         "shipfastlabs/toolkit-firecrawl": "*"
     },
     "require-dev": {
@@ -95,14 +95,6 @@
             "name": "firecrawl",
             "type": "path",
             "url": "packages/toolkit-firecrawl",
-            "options": {
-                "symlink": false
-            }
-        },
-        {
-            "name": "database",
-            "type": "path",
-            "url": "packages/toolkit-database",
             "options": {
                 "symlink": false
             }

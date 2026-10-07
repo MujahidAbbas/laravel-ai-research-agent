@@ -25,7 +25,7 @@ class StepUsageRecorder
     public function starting(StartingStep $event): void
     {
         // Rough size of the context about to be sent. Calibrate against the
-        // provider's promptTokens on the same step; chars/4 is close enough
+        // provider's inputTokens on the same step; chars/4 is close enough
         // to show the shape and is what a pre-run estimate has to work with.
         $encoded = json_encode($event->messages) ?: serialize($event->messages);
 
@@ -55,13 +55,13 @@ class StepUsageRecorder
             [
                 'tool_calls' => count($event->response->toolCalls),
                 'tools' => array_map(fn ($call) => $call->name, $event->response->toolCalls),
-                'prompt_tokens' => $usage->promptTokens,
+                'prompt_tokens' => $usage->uncachedInputTokens(),
                 'cache_write_tokens' => $usage->cacheWriteInputTokens,
                 'cache_read_tokens' => $usage->cacheReadInputTokens,
-                // The provider bills all three; promptTokens alone is only the
-                // uncached remainder on both Anthropic and OpenAI.
-                'context_tokens' => $usage->promptTokens + $usage->cacheWriteInputTokens + $usage->cacheReadInputTokens,
-                'completion_tokens' => $usage->completionTokens,
+                // laravel/ai 1.x reports inputTokens as the full context, cache reads
+                // and writes included, on both Anthropic and OpenAI.
+                'context_tokens' => $usage->inputTokens,
+                'completion_tokens' => $usage->outputTokens,
                 'reasoning_tokens' => $usage->reasoningTokens,
                 'ms' => (int) round($event->time),
                 // The provider's own usage block, so a mapping bug in the SDK is visible.

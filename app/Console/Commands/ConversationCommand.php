@@ -183,10 +183,10 @@ class ConversationCommand extends Command
             'history_chars_by_class' => $byClass,
             'turn_context_tokens' => $totals['context_tokens'],
             'turn_completion_tokens' => $totals['completion_tokens'],
-            // Same accounting as the recorder: OpenAI's promptTokens is only the uncached remainder.
-            'summary_prompt_tokens' => $summaryUsage === null ? null : $summaryUsage->promptTokens + $summaryUsage->cacheWriteInputTokens + $summaryUsage->cacheReadInputTokens,
-            'summary_uncached_prompt_tokens' => $summaryUsage?->promptTokens,
-            'summary_completion_tokens' => $summaryUsage?->completionTokens,
+            // Same accounting as the recorder: inputTokens is the full context in laravel/ai 1.x.
+            'summary_prompt_tokens' => $summaryUsage === null ? null : $summaryUsage->inputTokens,
+            'summary_uncached_prompt_tokens' => $summaryUsage?->uncachedInputTokens(),
+            'summary_completion_tokens' => $summaryUsage?->outputTokens,
             'ms' => $ms,
             'invocation_id' => $response->invocationId,
             'step_rows' => $steps,
