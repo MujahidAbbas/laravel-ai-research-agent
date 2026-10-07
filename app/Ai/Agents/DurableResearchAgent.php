@@ -30,6 +30,14 @@ class DurableResearchAgent extends QueuedResearchAgent
         FirecrawlScrape::class => ['url'],
     ];
 
+    /**
+     * Tools whose interrupted call is not repeated. A scrape that may have run is
+     * cheap to run again; a crawl that may have started is a second charge.
+     */
+    private const AT_MOST_ONCE = [
+        FirecrawlCrawl::class,
+    ];
+
     public function __construct(public readonly string $runKey)
     {
         parent::__construct();
@@ -39,7 +47,12 @@ class DurableResearchAgent extends QueuedResearchAgent
     {
         foreach (parent::tools() as $tool) {
             yield $tool instanceof Tool
-                ? new IdempotentTool($tool, $this->runKey, self::KEY_ARGUMENTS[$tool::class] ?? [])
+                ? new IdempotentTool(
+                    $tool,
+                    $this->runKey,
+                    keyArguments: self::KEY_ARGUMENTS[$tool::class] ?? [],
+                    atMostOnce: in_array($tool::class, self::AT_MOST_ONCE, true),
+                )
                 : $tool;
         }
     }

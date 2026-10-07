@@ -64,6 +64,49 @@ class IdempotentToolTest extends TestCase
         $this->assertSame(2, DB::table('agent_tool_invocations')->where('tool', 'FirecrawlSearch')->count());
     }
 
+    /**
+     * D1x's row 36: the kill landed during the crawl request, so attempt 1's
+     * claim has no result and nobody knows whether Firecrawl started it.
+     */
+    public function test_an_interrupted_crawl_is_not_started_again(): void
+    {
+        $this->claimedRow('FirecrawlCrawl', ['url' => 'https://pub.towardsai.net'], ['limit' => 3, 'prompt' => 'AI agents, Laravel, queue, LLM tool calling', 'url' => 'https://pub.towardsai.net']);
+
+        $result = $this->wrapped('FirecrawlCrawl')->handle(new Request(['url' => 'https://pub.towardsai.net', 'limit' => 3, 'prompt' => 'Laravel queue jobs LLM agents AI']));
+
+        Http::assertNothingSent();
+        $this->assertStringContainsString('may or may not have run', (string) $result);
+        $this->assertSame('claimed', DB::table('agent_tool_invocations')->where('tool', 'FirecrawlCrawl')->value('status'));
+    }
+
+    public function test_an_interrupted_scrape_runs_again(): void
+    {
+        $this->claimedRow('FirecrawlScrape', ['url' => 'https://pub.towardsai.net/post'], ['formats' => 'markdown', 'url' => 'https://pub.towardsai.net/post']);
+
+        $this->wrapped('FirecrawlScrape')->handle(new Request(['url' => 'https://pub.towardsai.net/post', 'formats' => 'markdown']));
+
+        Http::assertSentCount(1);
+        $this->assertSame('done', DB::table('agent_tool_invocations')->where('tool', 'FirecrawlScrape')->value('status'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $key
+     * @param  array<string, mixed>  $args
+     */
+    private function claimedRow(string $tool, array $key, array $args): void
+    {
+        DB::table('agent_tool_invocations')->insert([
+            'run_key' => '01TESTRUNKEY0000000000000A',
+            'tool' => $tool,
+            'args_sha' => sha1(json_encode($key, JSON_UNESCAPED_SLASHES)),
+            'args' => json_encode($args, JSON_UNESCAPED_SLASHES),
+            'status' => 'claimed',
+            'pid' => 61107,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function wrapped(string $name): IdempotentTool
     {
         foreach ((new DurableResearchAgent('01TESTRUNKEY0000000000000A'))->tools() as $tool) {
