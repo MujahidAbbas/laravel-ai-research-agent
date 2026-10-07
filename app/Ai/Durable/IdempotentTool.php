@@ -15,10 +15,15 @@ use Stringable;
 use Throwable;
 
 /**
- * Wraps a tool so that, within one run, the same call with the same arguments
- * executes once. The key is the run plus the tool plus a hash of the arguments,
- * not the provider's tool-call id: a retried job re-plans and the model mints
- * new ids, so the id never matches across attempts.
+ * Wraps a tool so that, within one run, the same call executes once. The key is
+ * the run plus the tool plus a hash of the arguments that make two calls the
+ * same side effect, not the provider's tool-call id: a retried job re-plans and
+ * the model mints new ids, so the id never matches across attempts.
+ *
+ * Not every argument belongs in the key. On resume the model re-plans the step
+ * that was in flight and rewords free text (the crawl prompt), so a hash of
+ * everything it typed misses the match. Pass the stable arguments; with none,
+ * the key covers all of them.
  *
  * Claim first, execute second. A crash between the two leaves a 'claimed' row,
  * which the retry treats as "unknown outcome" and re-runs; a crash after the
@@ -26,9 +31,13 @@ use Throwable;
  */
 class IdempotentTool implements Tool
 {
+    /**
+     * @param  list<string>  $keyArguments
+     */
     public function __construct(
         private readonly Tool $tool,
         private readonly string $runKey,
+        private readonly array $keyArguments = [],
     ) {}
 
     public function name(): string
@@ -50,7 +59,9 @@ class IdempotentTool implements Tool
     {
         $args = $request->all();
         ksort($args);
-        $sha = sha1(json_encode($args, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        $key = $this->keyArguments === [] ? $args : array_intersect_key($args, array_flip($this->keyArguments));
+        $sha = sha1(json_encode($key, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         $claim = [
             'run_key' => $this->runKey,
