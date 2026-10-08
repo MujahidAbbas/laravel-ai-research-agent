@@ -11,6 +11,9 @@ cd "$(dirname "$0")/.."
 MODE=${1:-sigkill}
 TOPIC=${2:-"Laravel queued jobs that call an LLM agent: timeouts, retries and duplicate tool calls"}
 KILL_AT=${KILL_AT:-20}
+# The config default (300) sits above the job's $timeout, as it should in production. A killed
+# job waits out retry_after before the next worker sees it, so the demo shortens it to 90 s.
+export DB_QUEUE_RETRY_AFTER=${DB_QUEUE_RETRY_AFTER:-90}
 export QUEUE_RUN_LOG="runs/$(date -u +%Y-%m-%d-%H%M%S)-$MODE.jsonl"
 
 if [[ $(sqlite3 database/database.sqlite 'select count(*) from jobs') != 0 ]]; then
