@@ -5,66 +5,42 @@ declare(strict_types=1);
 namespace App\Ai;
 
 use Closure;
-use Laravel\Ai\Prompts\AgentPrompt;
-use Laravel\Ai\Responses\AgentResponse;
+use Laravel\Ai\PendingStep;
 
 /**
- * Route the model per prompt instead of per class.
+ * Gather on the agent's own model, finish on a cheap one.
  *
- * The attributes bind one model to the class for the life of the process.
- * Middleware is the only place that sees the actual prompt before the request
- * is built, so it is the only place a routing decision can look at the work.
+ * Since laravel/ai 1.0, agent middleware wraps each generation step and
+ * receives a PendingStep, so the model can change between steps of one run.
+ * In the 09-18 runs every expensive Haiku decision was a tool choice (search
+ * size, full-text search, which pages to scrape), and the answer step carried
+ * 46-60% of a Sonnet run's context and 65-72% of its output. So the tool
+ * steps stay on the agent's model, and once they are spent the cheap model
+ * writes the answer with tools forbidden: it cannot add to the context it reads.
  *
- * Two things to know. AgentPrompt::$model is readonly and revise() copies the
- * old model into the new instance, so a router builds the prompt by hand. And
- * the provider is NOT taken from the prompt - the destination closure passes
- * the provider whose prompt() was entered - so changing $prompt->provider here
- * changes what your logs say, not where the request goes. Route the model only.
+ * tool_choice none, not withTools([]): the request keeps its tool definitions,
+ * which the tool_use blocks already in the history refer to.
+ *
+ * The cheap model is keyed by provider, because a run that fails over carries
+ * the next provider's name on every step. A provider with no entry is left alone.
  */
 class ModelRouter
 {
     /**
-     * @param  string  $cheap  Model for prompts under the threshold.
-     * @param  string  $smart  Model for everything else.
-     * @param  int  $threshold  Prompt length, in characters, that buys the smart model.
+     * @param  array<string, string>  $cheap  The cheap model for each provider.
+     * @param  int  $toolSteps  Steps that keep the agent's own model and its tools.
      */
     public function __construct(
-        private string $cheap = 'claude-haiku-4-5-20251001',
-        private string $smart = 'claude-sonnet-4-6',
-        private int $threshold = 280,
+        private array $cheap = ['anthropic' => 'claude-haiku-5-5', 'openai' => 'gpt-6-luna'],
+        private int $toolSteps = 3,
     ) {}
 
-    public function handle(AgentPrompt $prompt, Closure $next): AgentResponse
+    public function handle(PendingStep $step, Closure $next)
     {
-        return $next($this->withModel(
-            $prompt,
-            strlen($prompt->prompt) < $this->threshold ? $this->cheap : $this->smart,
-        ));
-    }
+        if ($step->number < $this->toolSteps || ! isset($this->cheap[$step->provider])) {
+            return $next($step);
+        }
 
-    /**
-     * Rebuild the prompt on a different model. There is no withModel() helper
-     * in the SDK, and revise() will hand back the model you are trying to change.
-     *
-     * Carry every remaining argument. The constructor defaults them all to null,
-     * so a short version of this method compiles, runs, and quietly drops the
-     * tool-approval decisions and the parent invocation ids - which breaks
-     * approval resumes and orphans sub-agent traces, on the routed path only.
-     */
-    private function withModel(AgentPrompt $prompt, string $model): AgentPrompt
-    {
-        return new AgentPrompt(
-            $prompt->agent,
-            $prompt->prompt,
-            $prompt->attachments,
-            $prompt->provider,
-            $model,
-            $prompt->timeout,
-            $prompt->invocationId,
-            $prompt->approvalDecisions,
-            $prompt->parentInvocationId,
-            $prompt->parentToolInvocationId,
-            $prompt->isFinalAttempt(),
-        );
+        return $next($step->withModel($this->cheap[$step->provider])->withToolChoice('none'));
     }
 }

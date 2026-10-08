@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f422d256474fd5e1f02cbcf9806cce60",
+    "content-hash": "263740d965949ba9b33f9de5d343d0a5",
     "packages": [
         {
             "name": "brick/math",
@@ -1060,16 +1060,16 @@
         },
         {
             "name": "laravel/ai",
-            "version": "v1.1.0",
+            "version": "v1.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/ai.git",
-                "reference": "a47929ad17d84528e37f1f85927d14824604b09e"
+                "reference": "0020f8f529321211870385159d691915e19460d4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/a47929ad17d84528e37f1f85927d14824604b09e",
-                "reference": "a47929ad17d84528e37f1f85927d14824604b09e",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/0020f8f529321211870385159d691915e19460d4",
+                "reference": "0020f8f529321211870385159d691915e19460d4",
                 "shasum": ""
             },
             "require": {
@@ -1138,7 +1138,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-10-05T16:29:19+00:00"
+            "time": "2026-10-07T19:23:23+00:00"
         },
         {
             "name": "laravel/framework",

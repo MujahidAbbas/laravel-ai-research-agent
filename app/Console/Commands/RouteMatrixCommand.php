@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Ai;
 use Laravel\Ai\Attributes\Model as ModelAttribute;
 use Laravel\Ai\Attributes\Provider as ProviderAttribute;
@@ -12,15 +13,17 @@ use Laravel\Ai\Attributes\UseCheapestModel;
 use Laravel\Ai\Attributes\UseSmartestModel;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Enums\Lab;
+use Laravel\Ai\Events\PromptingAgent;
 use ReflectionClass;
 use Throwable;
 
 /**
  * Print the model every agent actually sends, before the invoice says so.
  *
- * Model selection is a precedence chain with four inputs and no diagnostics:
+ * Model selection is a precedence chain with five inputs and no warnings:
  * a call-time argument, a model() method, #[Model], then the cheapest/smartest
- * attributes, then the provider's own default. Every mistake in it is silent.
+ * attributes, then the provider's own default. Since laravel/ai 1.0, step
+ * middleware can change the model on any step after all five have run.
  *
  * This resolves each agent for real - fake gateway, so no tokens are spent -
  * and reads the model back off the response meta, which is what the request
@@ -34,6 +37,11 @@ class RouteMatrixCommand extends Command
 
     protected $description = 'Print the provider and model each agent resolves to, without spending a token';
 
+    /**
+     * The model the five inputs resolved, before any step middleware ran.
+     */
+    private ?string $resolvedModel = null;
+
     public function handle(): int
     {
         $agents = $this->argument('agent') ?: $this->discoverAgents();
@@ -43,6 +51,12 @@ class RouteMatrixCommand extends Command
 
             return self::FAILURE;
         }
+
+        // PromptingAgent fires before the first step, so it carries the model
+        // the five inputs resolved, not the one step middleware sent.
+        Event::listen(PromptingAgent::class, function (PromptingAgent $event): void {
+            $this->resolvedModel = $event->prompt->model;
+        });
 
         $this->newLine();
         $this->line(sprintf('  <fg=gray>config ai.default =</> %s', config('ai.default')));
@@ -78,7 +92,7 @@ class RouteMatrixCommand extends Command
             $this->table(['Agent', 'Provider / model', 'Decided by', 'Ignored'], $rows);
             $this->comment('  A failover LIST discards your pinned model, including a call-time model: argument.');
             $this->comment('  Use a map to keep it:');
-            $this->comment("  prompt(provider: ['anthropic' => 'claude-sonnet-4-6', 'openai' => 'gpt-5.6-terra'])");
+            $this->comment("  prompt(provider: ['anthropic' => 'claude-sonnet-4-6', 'openai' => 'gpt-6.1-sol'])");
         }
 
         $this->newLine();
@@ -98,11 +112,19 @@ class RouteMatrixCommand extends Command
 
         $agent = app($class);
 
+        $this->resolvedModel = null;
+
         $response = $failover === []
             ? $agent->prompt('.')
             : $agent->prompt('.', provider: $failover);
 
         [$decidedBy, $ignored] = $this->explain($class, $failover !== []);
+
+        // The fake run is one step, so a different model on it came from step
+        // middleware. Later steps can differ again: read $response->steps.
+        if ($this->resolvedModel !== null && $response->meta->model !== $this->resolvedModel) {
+            [$decidedBy, $ignored] = ['step middleware (step 0)', trim($decidedBy.' '.$ignored)];
+        }
 
         return [
             class_basename($class),
