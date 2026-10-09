@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\ConversationSummarizer;
+use App\Ai\Agents\DurableResearchAgent;
 use App\Ai\Agents\ResearchAgent;
 use App\Ai\Agents\RoutedResearchAgent;
 use Closure;
@@ -246,6 +247,16 @@ class ModelRoutingTest extends TestCase
         $this->artisan('ai:route-matrix', ['agent' => [AllCheapResearchAgent::class]])
             ->expectsTable(['Agent', 'Provider / model', 'Decided by', 'Ignored'], [
                 ['AllCheapResearchAgent', 'anthropic / claude-haiku-5-5', 'step middleware (step 0)', '#[Model]'],
+            ])
+            ->assertSuccessful();
+    }
+
+    public function test_route_matrix_names_the_constructor_argument_an_agent_needs(): void
+    {
+        $this->artisan('ai:route-matrix', ['agent' => [DurableResearchAgent::class, ResearchAgent::class]])
+            ->expectsTable(['Agent', 'Provider / model', 'Decided by', 'Ignored'], [
+                ['DurableResearchAgent', 'needs constructor argument $runKey', '', ''],
+                ['ResearchAgent', 'openai / gpt-6.1-sol', 'provider default', ''],
             ])
             ->assertSuccessful();
     }

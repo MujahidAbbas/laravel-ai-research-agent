@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Ai;
 use Laravel\Ai\Attributes\Model as ModelAttribute;
@@ -15,6 +16,7 @@ use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Events\PromptingAgent;
 use ReflectionClass;
+use ReflectionNamedType;
 use Throwable;
 
 /**
@@ -110,7 +112,24 @@ class RouteMatrixCommand extends Command
     {
         Ai::fakeAgent($class, ['ok']);
 
-        $agent = app($class);
+        try {
+            $agent = app($class);
+        } catch (BindingResolutionException $e) {
+            // The container cannot build a string or an int argument, such as
+            // DurableResearchAgent's $runKey. Name it instead of printing the error.
+            $parameters = $this->scalarConstructorParameters($class);
+
+            if ($parameters === []) {
+                throw $e;
+            }
+
+            return [
+                class_basename($class),
+                sprintf('needs constructor %s %s', count($parameters) === 1 ? 'argument' : 'arguments', implode(', ', $parameters)),
+                '',
+                '',
+            ];
+        }
 
         $this->resolvedModel = null;
 
@@ -187,6 +206,26 @@ class RouteMatrixCommand extends Command
         }
 
         return ['provider default', ''];
+    }
+
+    /**
+     * Required constructor parameters the container cannot build: untyped or built-in types.
+     *
+     * @return string[]
+     */
+    private function scalarConstructorParameters(string $class): array
+    {
+        $names = [];
+
+        foreach ((new ReflectionClass($class))->getConstructor()?->getParameters() ?? [] as $parameter) {
+            $type = $parameter->getType();
+
+            if (! $parameter->isOptional() && ($type === null || ($type instanceof ReflectionNamedType && $type->isBuiltin()))) {
+                $names[] = '$'.$parameter->getName();
+            }
+        }
+
+        return $names;
     }
 
     /**
