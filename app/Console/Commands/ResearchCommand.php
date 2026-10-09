@@ -6,7 +6,9 @@ namespace App\Console\Commands;
 
 use App\Ai\Agents\PrefixCachedResearchAgent;
 use App\Ai\Agents\ResearchAgent;
+use App\Ai\Agents\RoutedResearchAgent;
 use App\Ai\Exceptions\TokenBudgetExceeded;
+use App\Ai\ModelRouter;
 use App\Ai\StepUsageRecorder;
 use App\Ai\TokenBudget;
 use Illuminate\Console\Command;
@@ -27,7 +29,9 @@ class ResearchCommand extends Command
         {--model=claude-sonnet-4-6 : Model id for that provider}
         {--caching=default : default | off (OpenAI) | auto (Anthropic advancing breakpoint) | prefix (Anthropic instructions + tools only)}
         {--budget= : Ceiling on context tokens the whole run may send; refuses the step that would cross it}
-        {--prefix-tokens=1345 : Tokens the instructions + tool schemas cost on this provider (measured: 1,345 Sonnet 4.6, ~620 gpt-5.6-terra)}';
+        {--prefix-tokens=1345 : Tokens the instructions + tool schemas cost on this provider (measured: 1,345 Sonnet 4.6, ~620 gpt-5.6-terra)}
+        {--routed : Run RoutedResearchAgent: ModelRouter sends the answer step (step 3 on) to the cheap model, tools off. No prefix caching}
+        {--tool-steps= : With --routed, the steps that keep --model and its tools before the router switches (ModelRouter default: 3)}';
 
     protected $description = 'Research a blog topic: mine the web + check our own posts for gaps';
 
@@ -46,7 +50,11 @@ class ResearchCommand extends Command
         });
 
         $caching = (string) $this->option('caching');
-        $agent = $caching === 'prefix' ? new PrefixCachedResearchAgent : new ResearchAgent(caching: $caching);
+        $agent = match (true) {
+            (bool) $this->option('routed') => $this->routedAgent($caching),
+            $caching === 'prefix' => new PrefixCachedResearchAgent,
+            default => new ResearchAgent(caching: $caching),
+        };
 
         $budget->ceiling = $this->option('budget') !== null ? (int) $this->option('budget') : null;
         $budget->prefixTokens = (int) $this->option('prefix-tokens');
@@ -84,7 +92,13 @@ class ResearchCommand extends Command
 
         $this->stepTable($recorder);
 
-        $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}");
+        $routed = match (true) {
+            $this->option('routed') && $this->option('tool-steps') !== null => '-routed-tool-steps-'.(int) $this->option('tool-steps'),
+            (bool) $this->option('routed') => '-routed',
+            default => '',
+        };
+
+        $path = $recorder->save("{$provider}-{$model}-cache-{$agent->caching}{$routed}");
         $this->comment("Run saved: {$path}");
 
         return self::SUCCESS;
@@ -128,6 +142,31 @@ class ResearchCommand extends Command
             number_format($t['cache_read_tokens']),
             number_format($t['completion_tokens']),
         ));
+    }
+
+    /**
+     * RoutedResearchAgent, or the same agent with its router's tool steps changed.
+     * The prompt passes --provider and --model, so the anonymous subclass not
+     * carrying the parent's #[Provider] and #[Model] attributes changes nothing.
+     */
+    private function routedAgent(string $caching): RoutedResearchAgent
+    {
+        if ($this->option('tool-steps') === null) {
+            return new RoutedResearchAgent(caching: $caching);
+        }
+
+        return new class($caching, (int) $this->option('tool-steps')) extends RoutedResearchAgent
+        {
+            public function __construct(string $caching, private int $toolSteps)
+            {
+                parent::__construct(caching: $caching);
+            }
+
+            public function middleware(): array
+            {
+                return [new ModelRouter(toolSteps: $this->toolSteps)];
+            }
+        };
     }
 
     private function short(string $value, int $max): string
